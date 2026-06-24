@@ -34,3 +34,50 @@ spec:
         value: $(params.branch)
       runAfter:
         - init
+
+tasks:
+  - name: clone
+    workspaces:
+      - name: output
+        workspace: pipeline-workspace
+    taskRef:
+      name: git-clone
+      kind: ClusterTask
+    params:
+      - name: url
+        value: $(params.repo-url)
+      - name: revision
+        value: $(params.branch)
+
+  - name: npminstall
+    runAfter:
+      - clone
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+    taskRef:
+      name: npm
+
+  - name: tests
+    runAfter:
+      - npminstall
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+    taskRef:
+      name: jasmine
+
+  - name: build
+    runAfter:
+      - tests
+    taskRef:
+      name: buildah
+      kind: ClusterTask
+    params:
+      - name: IMAGE
+        value: $(params.build-image)
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+      - name: dockerconfig
+        workspace: dockerconfig-ws
