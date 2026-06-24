@@ -1,83 +1,75 @@
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
-metadata:  
+metadata:
   name: juphc-tc-pipeline
+
 spec:
+  params:
+    - name: repo-url
+      type: string
+    - name: branch
+      type: string
+    - name: app-name
+      type: string
+    - name: build-image
+      type: string
+
   workspaces:
     - name: pipeline-workspace
     - name: dockerconfig-ws
-  params:
-    - name: build-image
-    - name: repo-url
-    - name: branch
-      default: main
+
   tasks:
-  
-    - name: init
-      workspaces:
-        - name: source
-          workspace: pipeline-workspace          
+    - name: cleanup
       taskRef:
         name: cleanup
-        
-    - name: clone
       workspaces:
-        - name: output
-          workspace: pipeline-workspace          
+        - name: source
+          workspace: pipeline-workspace
+
+    - name: clone
+      runAfter:
+        - cleanup
       taskRef:
         name: git-clone
         kind: ClusterTask
       params:
-      - name: url
-        value: $(params.repo-url)
-      - name: revision
-        value: $(params.branch)
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.branch)
+      workspaces:
+        - name: output
+          workspace: pipeline-workspace
+
+    - name: npminstall
       runAfter:
-        - init
+        - clone
+      taskRef:
+        name: npm
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
 
-tasks:
-  - name: clone
-    workspaces:
-      - name: output
-        workspace: pipeline-workspace
-    taskRef:
-      name: git-clone
-      kind: ClusterTask
-    params:
-      - name: url
-        value: $(params.repo-url)
-      - name: revision
-        value: $(params.branch)
+    - name: tests
+      runAfter:
+        - npminstall
+      taskRef:
+        name: jasmine
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
 
-  - name: npminstall
-    runAfter:
-      - clone
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-    taskRef:
-      name: npm
-
-  - name: tests
-    runAfter:
-      - npminstall
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-    taskRef:
-      name: jasmine
-
-  - name: build
-    runAfter:
-      - tests
-    taskRef:
-      name: buildah
-      kind: ClusterTask
-    params:
-      - name: IMAGE
-        value: $(params.build-image)
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-      - name: dockerconfig
-        workspace: dockerconfig-ws
+    - name: build
+      runAfter:
+        - tests
+      taskRef:
+        name: buildah
+        kind: ClusterTask
+      params:
+        - name: IMAGE
+          value: $(params.build-image)
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+        - name: dockerconfig
+          workspace: dockerconfig-ws
